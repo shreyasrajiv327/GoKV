@@ -1,4 +1,3 @@
-// internal/handlers/kv_handler.go
 package handlers
 
 import (
