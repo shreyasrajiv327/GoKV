@@ -8,7 +8,7 @@ import (
 	"gokv/internal/repository"
 	"gokv/internal/routes"
 	"gokv/internal/services"
-
+    "gokv/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -28,7 +28,8 @@ func main() {
 	h := handlers.NewKVHandler(svc, log)
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLogger(log))
+	r.Use(middleware.Recovery(log))
 
 	routes.Register(r, h)
 
