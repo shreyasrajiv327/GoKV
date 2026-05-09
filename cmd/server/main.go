@@ -9,6 +9,7 @@ import (
 	"gokv/internal/routes"
 	"gokv/internal/services"
     "gokv/internal/middleware"
+	"gokv/internal/wal"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -24,7 +25,20 @@ func main() {
 
 	mem := cache.NewMemoryStore()
 	repo := repository.NewKVRepositroy(mem)
-	svc := services.NewKVService(repo)
+	walStore, err := wal.New("gokv.wal")
+	if err != nil{
+		log.Fatal("failed to initialize WAL", zap.Error(err))
+	}
+
+	err = walStore.Replay(
+		repo.Put,
+		repo.Delete,
+	)
+
+	if err != nil{
+		log.Fatal("failed to replay WAL", zap.Error(err))
+	}
+	svc := services.NewKVService(repo, walStore)
 	h := handlers.NewKVHandler(svc, log)
 
 	r := gin.New()

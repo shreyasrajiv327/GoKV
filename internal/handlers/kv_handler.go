@@ -36,7 +36,10 @@ func (h *KVHandler) Put(c *gin.Context) {
 		return
 	}
 
-	h.service.Put(req.Key, req.Value)
+	if err := h.service.Put(req.Key, req.Value); err != nil{
+		utils.Error(c, http.StatusInternalServerError, "failed to persist data")
+		return
+	}
 	utils.Success(c, http.StatusOK, gin.H{"message": "ok"})
 }
 
@@ -57,6 +60,9 @@ func (h *KVHandler) Get(c *gin.Context) {
 
 func (h *KVHandler) Delete(c *gin.Context) {
 	key := c.Param("key")
-	h.service.Delete(key)
+		if err := h.service.Delete(key); err != nil{
+		utils.Error(c, http.StatusInternalServerError, "failed to persist data")
+		return
+	}
 	utils.Success(c, http.StatusOK, gin.H{"message": "deleted"})
 }
