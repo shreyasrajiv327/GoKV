@@ -33,3 +33,16 @@ func (m *MemoryStore) Delete(key string){
 	
 	delete(m.data, key)
 }
+func (m *MemoryStore) GetAll() map[string]string {
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	copyData := make(map[string]string)
+
+	for k, v := range m.data {
+		copyData[k] = v
+	}
+
+	return copyData
+}

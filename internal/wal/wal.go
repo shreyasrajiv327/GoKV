@@ -93,3 +93,20 @@ func (w *WAL) Replay(
 
 	return scanner.Err()
 }
+
+func (w *WAL) Clear() error {
+
+	err := w.file.Close()
+	if err != nil {
+		return err
+	}
+
+	file, err := os.Create(w.path)
+	if err != nil {
+		return err
+	}
+
+	w.file = file
+
+	return nil
+}
