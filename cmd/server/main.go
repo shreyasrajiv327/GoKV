@@ -11,6 +11,8 @@ import (
 	"gokv/internal/services"
 	"gokv/internal/snapshot"
 	"gokv/internal/wal"
+	"gokv/internal/cluster"
+     "os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -82,19 +84,42 @@ func main() {
 		}
 	}()
 
-	
-	svc := services.NewKVService(repo, walStore)
+	nodeID := os.Getenv("NODE_ID")
+	isLeader := nodeID == "leader"
+
+	var replicator *cluster.Replicator
+
+	if isLeader{
+		replicator = cluster.NewReplicator([] string {
+			"http://localhost:8002",
+			"http://localhost:8003",
+		})
+	}
+	svc := services.NewKVService(
+		repo, 
+		walStore,
+		replicator,
+		isLeader,
+	)
 
 	h := handlers.NewKVHandler(svc, log)
-
+    
+	replicationHandler := handlers.NewReplicationHandler(svc)
 	r := gin.New()
 
 	r.Use(middleware.RequestLogger(log))
 	r.Use(middleware.Recovery(log))
 
-	routes.Register(r, h)
+	routes.Register(r, h, replicationHandler)
 
-	log.Info("starting GoKV server", zap.String("port", cfg.Port))
+	
+	log.Info(
+		"starting GoKV server",
+		zap.String("port", cfg.Port),
+		zap.String("node_id", nodeID),
+		zap.Bool("is_leader", isLeader),
+	)
+
 
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatal("server failed", zap.Error(err))

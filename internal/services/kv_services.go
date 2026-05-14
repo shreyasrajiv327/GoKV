@@ -3,19 +3,27 @@ package services
 import (
 	"gokv/internal/repository"
 	"gokv/internal/wal"
+	"gokv/internal/cluster"
 )
 
 type KVService struct {
-	repo *repository.KVRepository
-	wal *wal.WAL
+	repo       *repository.KVRepository
+	wal        *wal.WAL
+	replicator *cluster.Replicator
+	isLeader   bool
 
 }
 
 func NewKVService(repo *repository.KVRepository,
-	wal *wal.WAL) *KVService {
+	wal *wal.WAL,
+	replicator *cluster.Replicator,
+	isLeader bool,
+	) *KVService {
 	return &KVService{
 		repo: repo,
 		wal: wal,
+		replicator: replicator,
+		isLeader: isLeader,
 	}
 }
 
@@ -24,6 +32,10 @@ func (s *KVService) Put(key, value string) error {
 		return err
 	}
 	s.repo.Put(key, value)
+
+	if s.isLeader && s.replicator !=nil{
+		s.replicator.ReplicatePut(key, value)
+	}
 	return nil
 }
 
@@ -37,6 +49,10 @@ func (s *KVService) Delete(key string) error {
 		return err
 	}
 	s.repo.Delete(key)
+
+	if s.isLeader && s.replicator !=nil{
+		s.replicator.ReplicateDelete(key)
+	}
 
 	return nil
 }
