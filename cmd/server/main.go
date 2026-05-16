@@ -1,6 +1,8 @@
 package main
 
 import (
+	raftpkg "gokv/internal/raft"
+
 	"gokv/internal/cache"
 	"gokv/internal/config"
 	"gokv/internal/handlers"
@@ -11,8 +13,8 @@ import (
 	"gokv/internal/services"
 	"gokv/internal/snapshot"
 	"gokv/internal/wal"
-	"gokv/internal/cluster"
-     "os"
+
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,14 +31,38 @@ func main() {
 	}
 	defer log.Sync()
 
+	// Memory store
 	mem := cache.NewMemoryStore()
 
+	// ---------------- RAFT SETUP ----------------
+
+	nodeID := os.Getenv("NODE_ID")
+	raftPort := os.Getenv("RAFT_PORT")
+
+	raftDir := "raft-data-" + nodeID
+
+raftNode, err := raftpkg.SetupRaft(
+	nodeID,
+	raftDir,
+	"127.0.0.1:"+raftPort,
+	mem,
+)
+
+	if err != nil {
+		log.Fatal("failed to setup raft", zap.Error(err))
+	}
+
+	_ = raftNode
+
+	// --------------------------------------------
+
+	// Repository
 	repo := repository.NewKVRepositroy(mem)
 
-
+	// Snapshot store
 	snapshotStore := snapshot.New("snapshot.json")
 
-
+	// Load snapshot
 	snapshotData, err := snapshotStore.Load()
 	if err != nil {
 		log.Fatal("failed to load snapshot", zap.Error(err))
@@ -46,12 +72,13 @@ func main() {
 		mem.Put(k, v)
 	}
 
+	// WAL
 	walStore, err := wal.New("gokv.wal")
 	if err != nil {
 		log.Fatal("failed to initialize WAL", zap.Error(err))
 	}
 
-
+	// Replay WAL
 	err = walStore.Replay(
 		repo.Put,
 		repo.Delete,
@@ -61,6 +88,7 @@ func main() {
 		log.Fatal("failed to replay WAL", zap.Error(err))
 	}
 
+	// Background snapshot worker
 	go func() {
 
 		ticker := time.NewTicker(30 * time.Second)
@@ -84,42 +112,32 @@ func main() {
 		}
 	}()
 
-	nodeID := os.Getenv("NODE_ID")
-	isLeader := nodeID == "leader"
-
-	var replicator *cluster.Replicator
-
-	if isLeader{
-		replicator = cluster.NewReplicator([] string {
-			"http://localhost:8002",
-			"http://localhost:8003",
-		})
-	}
+	// Service layer
 	svc := services.NewKVService(
-		repo, 
+		repo,
 		walStore,
-		replicator,
-		isLeader,
+		nil,
+		false,
 	)
 
+	// Handlers
 	h := handlers.NewKVHandler(svc, log)
-    
-	replicationHandler := handlers.NewReplicationHandler(svc)
+
+	// Gin router
 	r := gin.New()
 
 	r.Use(middleware.RequestLogger(log))
 	r.Use(middleware.Recovery(log))
 
-	routes.Register(r, h, replicationHandler)
+	// Routes
+	routes.Register(r, h)
 
-	
 	log.Info(
 		"starting GoKV server",
 		zap.String("port", cfg.Port),
 		zap.String("node_id", nodeID),
-		zap.Bool("is_leader", isLeader),
+		zap.String("raft_port", raftPort),
 	)
-
 
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatal("server failed", zap.Error(err))
