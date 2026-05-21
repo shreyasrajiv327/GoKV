@@ -4,6 +4,7 @@ import (
 	raftpkg "gokv/internal/raft"
 
 	"gokv/internal/cache"
+	"gokv/internal/cluster"
 	"gokv/internal/config"
 	"gokv/internal/handlers"
 	"gokv/internal/logger"
@@ -13,6 +14,8 @@ import (
 	"gokv/internal/services"
 	"gokv/internal/snapshot"
 	"gokv/internal/wal"
+
+	hashiraft "github.com/hashicorp/raft"
 
 	"os"
 	"time"
@@ -31,115 +34,247 @@ func main() {
 	}
 	defer log.Sync()
 
-	// Memory store
+	//--------------------------------
+	// Memory Store
+	//--------------------------------
+
 	mem := cache.NewMemoryStore()
 
-	// ---------------- RAFT SETUP ----------------
+	//--------------------------------
+	// RAFT SETUP
+	//--------------------------------
 
 	nodeID := os.Getenv("NODE_ID")
 	raftPort := os.Getenv("RAFT_PORT")
 
 	raftDir := "raft-data-" + nodeID
 
-raftNode, err := raftpkg.SetupRaft(
-	nodeID,
-	raftDir,
-	"127.0.0.1:"+raftPort,
-	mem,
-)
-
-	if err != nil {
-		log.Fatal("failed to setup raft", zap.Error(err))
-	}
-
-	_ = raftNode
-
-	// --------------------------------------------
-
-	// Repository
-	repo := repository.NewKVRepositroy(mem)
-
-	// Snapshot store
-	snapshotStore := snapshot.New("snapshot.json")
-
-	// Load snapshot
-	snapshotData, err := snapshotStore.Load()
-	if err != nil {
-		log.Fatal("failed to load snapshot", zap.Error(err))
-	}
-
-	for k, v := range snapshotData {
-		mem.Put(k, v)
-	}
-
-	// WAL
-	walStore, err := wal.New("gokv.wal")
-	if err != nil {
-		log.Fatal("failed to initialize WAL", zap.Error(err))
-	}
-
-	// Replay WAL
-	err = walStore.Replay(
-		repo.Put,
-		repo.Delete,
+	raftNode, err := raftpkg.SetupRaft(
+		nodeID,
+		raftDir,
+		"127.0.0.1:"+raftPort,
+		mem,
 	)
 
 	if err != nil {
-		log.Fatal("failed to replay WAL", zap.Error(err))
+
+		log.Fatal(
+			"failed to setup raft",
+			zap.Error(err),
+		)
 	}
 
-	// Background snapshot worker
+	//--------------------------------
+	// Node state (visibility/debug)
+	//--------------------------------
+
+	node := cluster.NewNode(
+		nodeID,
+		cluster.Follower,
+	)
+
+	if raftNode.State() == hashiraft.Leader {
+
+		node.SetRole(
+			cluster.Leader,
+		)
+	}
+
+	//--------------------------------
+	// Repository
+	//--------------------------------
+
+	repo :=
+		repository.NewKVRepositroy(
+			mem,
+		)
+
+	//--------------------------------
+	// Snapshot
+	//--------------------------------
+
+	snapshotStore :=
+		snapshot.New(
+			"snapshot.json",
+		)
+
+	snapshotData, err :=
+		snapshotStore.Load()
+
+	if err != nil {
+
+		log.Fatal(
+			"failed snapshot load",
+			zap.Error(err),
+		)
+	}
+
+	for k, v := range snapshotData {
+
+		mem.Put(k, v)
+	}
+
+	//--------------------------------
+	// WAL
+	//--------------------------------
+
+	walStore, err :=
+		wal.New(
+			"gokv.wal",
+		)
+
+	if err != nil {
+
+		log.Fatal(
+			"failed WAL init",
+			zap.Error(err),
+		)
+	}
+
+	err =
+		walStore.Replay(
+			repo.Put,
+			repo.Delete,
+		)
+
+	if err != nil {
+
+		log.Fatal(
+			"WAL replay failed",
+			zap.Error(err),
+		)
+	}
+
+	//--------------------------------
+	// Snapshot Worker
+	//--------------------------------
+
 	go func() {
 
-		ticker := time.NewTicker(30 * time.Second)
+		ticker :=
+			time.NewTicker(
+				30 * time.Second,
+			)
+
 		defer ticker.Stop()
 
 		for range ticker.C {
 
-			err := snapshotStore.Save(mem.GetAll())
+			err :=
+				snapshotStore.Save(
+					mem.GetAll(),
+				)
+
 			if err != nil {
-				log.Error("failed to save snapshot", zap.Error(err))
+
+				log.Error(
+					"snapshot failed",
+					zap.Error(err),
+				)
+
 				continue
 			}
 
-			err = walStore.Clear()
+			err =
+				walStore.Clear()
+
 			if err != nil {
-				log.Error("failed to clear WAL", zap.Error(err))
+
+				log.Error(
+					"WAL clear failed",
+					zap.Error(err),
+				)
+
 				continue
 			}
 
-			log.Info("snapshot created and WAL compacted")
+			log.Info(
+				"snapshot complete + WAL compacted",
+			)
 		}
+
 	}()
 
-	// Service layer
-	svc := services.NewKVService(
-		repo,
-		walStore,
-		nil,
-		false,
-	)
+	//--------------------------------
+	// Service Layer
+	//--------------------------------
 
+	svc :=
+		services.NewKVService(
+			repo,
+			walStore,
+			nil,
+			false,
+		)
+
+	//--------------------------------
 	// Handlers
-	h := handlers.NewKVHandler(svc, log)
+	//--------------------------------
 
-	// Gin router
+	kvHandler :=
+		handlers.NewKVHandler(
+			svc,
+			log,
+		)
+
+	nodeHandler :=
+		handlers.NewNodeHandler(
+			node,
+		)
+
+	//--------------------------------
+	// Router
+	//--------------------------------
+
 	r := gin.New()
 
-	r.Use(middleware.RequestLogger(log))
-	r.Use(middleware.Recovery(log))
-
-	// Routes
-	routes.Register(r, h)
-
-	log.Info(
-		"starting GoKV server",
-		zap.String("port", cfg.Port),
-		zap.String("node_id", nodeID),
-		zap.String("raft_port", raftPort),
+	r.Use(
+		middleware.RequestLogger(log),
 	)
 
-	if err := r.Run(":" + cfg.Port); err != nil {
-		log.Fatal("server failed", zap.Error(err))
+	r.Use(
+		middleware.Recovery(log),
+	)
+
+	routes.Register(
+		r,
+		kvHandler,
+		nodeHandler,
+	)
+
+	//--------------------------------
+	// Startup
+	//--------------------------------
+
+	log.Info(
+		"starting GoKV",
+
+		zap.String(
+			"port",
+			cfg.Port,
+		),
+
+		zap.String(
+			"node",
+			nodeID,
+		),
+
+		zap.String(
+			"raft",
+			raftPort,
+		),
+	)
+
+	err =
+		r.Run(
+			":" + cfg.Port,
+		)
+
+	if err != nil {
+
+		log.Fatal(
+			"server failed",
+			zap.Error(err),
+		)
 	}
 }

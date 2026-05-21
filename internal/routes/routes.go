@@ -8,10 +8,15 @@ import (
 
 func Register(
 	r *gin.Engine,
-	h *handlers.KVHandler,
+	kvHandler *handlers.KVHandler,
+	nodeHandler *handlers.NodeHandler,
 ) {
 
-	r.PUT("/kv", h.Put)
-	r.GET("/kv/:key", h.Get)
-	r.DELETE("/kv/:key", h.Delete)
+	// KV APIs
+	r.PUT("/kv", kvHandler.Put)
+	r.GET("/kv/:key", kvHandler.Get)
+	r.DELETE("/kv/:key", kvHandler.Delete)
+
+	// Cluster APIs
+	r.GET("/node/status", nodeHandler.Status)
 }
