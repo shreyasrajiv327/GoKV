@@ -2,35 +2,51 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
-	"gokv/internal/cluster"
-
+	hashiraft "github.com/hashicorp/raft"
 	"github.com/gin-gonic/gin"
 )
 
 type NodeHandler struct {
-	node *cluster.Node
+	nodeID string
+	raft   *hashiraft.Raft
 }
 
 func NewNodeHandler(
-	node *cluster.Node,
+	nodeID string,
+	raft *hashiraft.Raft,
 ) *NodeHandler {
 
 	return &NodeHandler{
-		node: node,
+		nodeID: nodeID,
+		raft:   raft,
 	}
 }
 
 func (h *NodeHandler) Status(c *gin.Context) {
 
-	c.JSON(http.StatusOK, gin.H{
-		"id": h.node.ID,
+	stats := h.raft.Stats()
 
-		"role": h.node.GetRole(),
+	term, _ := strconv.Atoi(
+		stats["term"],
+	)
 
-		"term": h.node.GetTerm(),
+	c.JSON(
+		http.StatusOK,
+		gin.H{
+			"id": h.nodeID,
 
-		"heartbeat_seconds":
-			h.node.TimeSinceHeartbeat().Seconds(),
-	})
+			"role": strings.ToLower(
+				h.raft.State().String(),
+			),
+
+			"term": term,
+
+			"leader": string(
+				h.raft.Leader(),
+			),
+		},
+	)
 }

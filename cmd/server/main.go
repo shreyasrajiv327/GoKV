@@ -1,10 +1,12 @@
 package main
 
 import (
+	"os"
+	"time"
+
 	raftpkg "gokv/internal/raft"
 
 	"gokv/internal/cache"
-	"gokv/internal/cluster"
 	"gokv/internal/config"
 	"gokv/internal/handlers"
 	"gokv/internal/logger"
@@ -14,11 +16,6 @@ import (
 	"gokv/internal/services"
 	"gokv/internal/snapshot"
 	"gokv/internal/wal"
-
-	hashiraft "github.com/hashicorp/raft"
-
-	"os"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -41,7 +38,7 @@ func main() {
 	mem := cache.NewMemoryStore()
 
 	//--------------------------------
-	// RAFT SETUP
+	// RAFT
 	//--------------------------------
 
 	nodeID := os.Getenv("NODE_ID")
@@ -65,29 +62,12 @@ func main() {
 	}
 
 	//--------------------------------
-	// Node state (visibility/debug)
-	//--------------------------------
-
-	node := cluster.NewNode(
-		nodeID,
-		cluster.Follower,
-	)
-
-	if raftNode.State() == hashiraft.Leader {
-
-		node.SetRole(
-			cluster.Leader,
-		)
-	}
-
-	//--------------------------------
 	// Repository
 	//--------------------------------
 
-	repo :=
-		repository.NewKVRepositroy(
-			mem,
-		)
+	repo := repository.NewKVRepositroy(
+		mem,
+	)
 
 	//--------------------------------
 	// Snapshot
@@ -104,14 +84,17 @@ func main() {
 	if err != nil {
 
 		log.Fatal(
-			"failed snapshot load",
+			"snapshot load failed",
 			zap.Error(err),
 		)
 	}
 
 	for k, v := range snapshotData {
 
-		mem.Put(k, v)
+		mem.Put(
+			k,
+			v,
+		)
 	}
 
 	//--------------------------------
@@ -126,7 +109,7 @@ func main() {
 	if err != nil {
 
 		log.Fatal(
-			"failed WAL init",
+			"WAL init failed",
 			zap.Error(err),
 		)
 	}
@@ -196,16 +179,15 @@ func main() {
 	}()
 
 	//--------------------------------
-	// Service Layer
+	// Services
 	//--------------------------------
 
-	svc :=
-		services.NewKVService(
-			repo,
-			walStore,
-			nil,
-			false,
-		)
+svc :=
+services.NewKVService(
+	repo,
+	walStore,
+	raftNode,
+)
 
 	//--------------------------------
 	// Handlers
@@ -219,7 +201,8 @@ func main() {
 
 	nodeHandler :=
 		handlers.NewNodeHandler(
-			node,
+			nodeID,
+			raftNode,
 		)
 
 	//--------------------------------
@@ -242,23 +225,16 @@ func main() {
 		nodeHandler,
 	)
 
-	//--------------------------------
-	// Startup
-	//--------------------------------
-
 	log.Info(
 		"starting GoKV",
-
 		zap.String(
 			"port",
 			cfg.Port,
 		),
-
 		zap.String(
 			"node",
 			nodeID,
 		),
-
 		zap.String(
 			"raft",
 			raftPort,

@@ -1,58 +1,119 @@
 package services
 
 import (
+	"encoding/json"
+	"errors"
+	"time"
+
+	"gokv/internal/raft"
 	"gokv/internal/repository"
 	"gokv/internal/wal"
-	"gokv/internal/cluster"
+
+	hashiraft "github.com/hashicorp/raft"
 )
 
 type KVService struct {
-	repo       *repository.KVRepository
-	wal        *wal.WAL
-	replicator *cluster.Replicator
-	isLeader   bool
+	repo *repository.KVRepository
+	wal  *wal.WAL
 
+	raft *hashiraft.Raft
 }
 
-func NewKVService(repo *repository.KVRepository,
+func NewKVService(
+	repo *repository.KVRepository,
 	wal *wal.WAL,
-	replicator *cluster.Replicator,
-	isLeader bool,
-	) *KVService {
+	raftNode *hashiraft.Raft,
+) *KVService {
+
 	return &KVService{
 		repo: repo,
 		wal: wal,
-		replicator: replicator,
-		isLeader: isLeader,
+		raft: raftNode,
 	}
 }
 
-func (s *KVService) Put(key, value string) error {
-	if err := s.wal.LogPut(key, value);  err != nil{
+func (s *KVService) Put(
+	key string,
+	value string,
+) error {
+
+	if s.raft.State() != hashiraft.Leader {
+
+		return errors.New(
+			"writes allowed only on leader",
+		)
+	}
+
+	cmd := raft.Command{
+		Op: "PUT",
+		Key: key,
+		Value: value,
+	}
+
+	data, err := json.Marshal(cmd)
+
+	if err != nil {
 		return err
 	}
-	s.repo.Put(key, value)
 
-	if s.isLeader && s.replicator !=nil{
-		s.replicator.ReplicatePut(key, value)
-	}
-	return nil
-}
+	future :=
+		s.raft.Apply(
+			data,
+			5*time.Second,
+		)
 
-func (s *KVService) Get(key string) (string, bool) {
-	return s.repo.Get(key)
-}
-
-func (s *KVService) Delete(key string) error {
-
-	if err := s.wal.LogDelete(key); err != nil{
+	if err := future.Error(); err != nil {
 		return err
 	}
-	s.repo.Delete(key)
 
-	if s.isLeader && s.replicator !=nil{
-		s.replicator.ReplicateDelete(key)
+	return s.wal.LogPut(
+		key,
+		value,
+	)
+}
+
+func (s *KVService) Delete(
+	key string,
+) error {
+
+	if s.raft.State() != hashiraft.Leader {
+
+		return errors.New(
+			"writes allowed only on leader",
+		)
 	}
 
-	return nil
+	cmd := raft.Command{
+		Op: "DELETE",
+		Key: key,
+	}
+
+	data, err := json.Marshal(cmd)
+
+	if err != nil {
+		return err
+	}
+
+	future :=
+		s.raft.Apply(
+			data,
+			5*time.Second,
+		)
+
+	if err := future.Error(); err != nil {
+		return err
+	}
+
+	return s.wal.LogDelete(
+		key,
+	)
+}
+
+func (s *KVService) Get(
+	key string,
+) (string, bool) {
+
+	return s.repo.Get(
+		key,
+	)
 }

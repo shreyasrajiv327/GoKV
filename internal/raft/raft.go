@@ -1,6 +1,6 @@
 package raft
 
-import(
+import (
 	"fmt"
 	"gokv/internal/cache"
 	"os"
@@ -16,24 +16,23 @@ func SetupRaft(
 	raftDir string,
 	raftBind string,
 	store *cache.MemoryStore,
-)(*hashiraft.Raft, error) {
+) (*hashiraft.Raft, error) {
 
 	config := hashiraft.DefaultConfig()
 	config.LocalID = hashiraft.ServerID(nodeID)
 
+	transport, err := hashiraft.NewTCPTransport(
+		raftBind,
+		nil,
+		3,
+		10*time.Second,
+		os.Stdout,
+	)
 
+	if err != nil {
+		return nil, err
+	}
 
-transport, err := hashiraft.NewTCPTransport(
-	raftBind,
-	nil,
-	3,
-	10*time.Second,
-	os.Stdout,
-)
-
-if err != nil {
-	return nil, err
-}
 	snapshotStore, err := hashiraft.NewFileSnapshotStore(
 		raftDir,
 		2,
@@ -78,16 +77,41 @@ if err != nil {
 	bootstrapConfig := hashiraft.Configuration{
 		Servers: []hashiraft.Server{
 			{
-				ID:      config.LocalID,
-				Address: transport.LocalAddr(),
+				ID:      "node1",
+				Address: "127.0.0.1:7001",
+			},
+			{
+				ID:      "node2",
+				Address: "127.0.0.1:7002",
+			},
+			{
+				ID:      "node3",
+				Address: "127.0.0.1:7003",
 			},
 		},
 	}
 
-	raftNode.BootstrapCluster(bootstrapConfig)
+	// ONLY bootstrap once
+	if nodeID == "node1" {
 
-	fmt.Println("Raft node initialized:", nodeID)
+		future := raftNode.BootstrapCluster(
+			bootstrapConfig,
+		)
+
+		if err := future.Error(); err != nil {
+
+			// Ignore if cluster already exists
+			if err != hashiraft.ErrCantBootstrap {
+				return nil, err
+			}
+
+		}
+	}
+
+	fmt.Println(
+		"Raft node initialized:",
+		nodeID,
+	)
 
 	return raftNode, nil
-	
 }
