@@ -29,6 +29,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	defer log.Sync()
 
 	//--------------------------------
@@ -44,14 +45,19 @@ func main() {
 	nodeID := os.Getenv("NODE_ID")
 	raftPort := os.Getenv("RAFT_PORT")
 
-	raftDir := "raft-data-" + nodeID
+	raftDir :=
+		"raft-data-" +
+			nodeID
 
-	raftNode, err := raftpkg.SetupRaft(
-		nodeID,
-		raftDir,
-		"127.0.0.1:"+raftPort,
-		mem,
-	)
+	raftNode,
+		fsm,
+		err :=
+		raftpkg.SetupRaft(
+			nodeID,
+			raftDir,
+			"127.0.0.1:"+raftPort,
+			mem,
+		)
 
 	if err != nil {
 
@@ -65,9 +71,11 @@ func main() {
 	// Repository
 	//--------------------------------
 
-	repo := repository.NewKVRepositroy(
-		mem,
-	)
+	repo :=
+		repository.
+			NewKVRepositroy(
+				mem,
+			)
 
 	//--------------------------------
 	// Snapshot
@@ -78,7 +86,8 @@ func main() {
 			"snapshot.json",
 		)
 
-	snapshotData, err :=
+	snapshotData,
+		err :=
 		snapshotStore.Load()
 
 	if err != nil {
@@ -89,7 +98,8 @@ func main() {
 		)
 	}
 
-	for k, v := range snapshotData {
+	for k, v :=
+		range snapshotData {
 
 		mem.Put(
 			k,
@@ -101,7 +111,8 @@ func main() {
 	// WAL
 	//--------------------------------
 
-	walStore, err :=
+	walStore,
+		err :=
 		wal.New(
 			"gokv.wal",
 		)
@@ -136,7 +147,8 @@ func main() {
 
 		ticker :=
 			time.NewTicker(
-				30 * time.Second,
+				30 *
+					time.Second,
 			)
 
 		defer ticker.Stop()
@@ -179,31 +191,53 @@ func main() {
 	}()
 
 	//--------------------------------
-	// Services
+	// HTTP Node Mapping
 	//--------------------------------
 
-svc :=
-services.NewKVService(
-	repo,
-	walStore,
-	raftNode,
-)
+	httpNodes :=
+		map[string]string{
+
+			"127.0.0.1:7001":
+			"8001",
+
+			"127.0.0.1:7002":
+			"8002",
+
+			"127.0.0.1:7003":
+			"8003",
+		}
+
+	//--------------------------------
+	// Service Layer
+	//--------------------------------
+
+	svc :=
+		services.
+			NewKVService(
+				repo,
+				walStore,
+				raftNode,
+				fsm,
+				httpNodes,
+			)
 
 	//--------------------------------
 	// Handlers
 	//--------------------------------
 
 	kvHandler :=
-		handlers.NewKVHandler(
-			svc,
-			log,
-		)
+		handlers.
+			NewKVHandler(
+				svc,
+				log,
+			)
 
 	nodeHandler :=
-		handlers.NewNodeHandler(
-			nodeID,
-			raftNode,
-		)
+		handlers.
+			NewNodeHandler(
+				nodeID,
+				raftNode,
+			)
 
 	//--------------------------------
 	// Router
@@ -212,11 +246,13 @@ services.NewKVService(
 	r := gin.New()
 
 	r.Use(
-		middleware.RequestLogger(log),
+		middleware.
+			RequestLogger(log),
 	)
 
 	r.Use(
-		middleware.Recovery(log),
+		middleware.
+			Recovery(log),
 	)
 
 	routes.Register(
@@ -227,14 +263,17 @@ services.NewKVService(
 
 	log.Info(
 		"starting GoKV",
+
 		zap.String(
 			"port",
 			cfg.Port,
 		),
+
 		zap.String(
 			"node",
 			nodeID,
 		),
+
 		zap.String(
 			"raft",
 			raftPort,
@@ -243,7 +282,8 @@ services.NewKVService(
 
 	err =
 		r.Run(
-			":" + cfg.Port,
+			":" +
+				cfg.Port,
 		)
 
 	if err != nil {

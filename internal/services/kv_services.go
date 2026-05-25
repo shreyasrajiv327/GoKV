@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
 
 	"gokv/internal/raft"
@@ -17,18 +18,25 @@ type KVService struct {
 	wal  *wal.WAL
 
 	raft *hashiraft.Raft
+	fsm  *raft.FSM
+
+	httpNodes map[string]string
 }
 
 func NewKVService(
 	repo *repository.KVRepository,
-	wal *wal.WAL,
+	walStore *wal.WAL,
 	raftNode *hashiraft.Raft,
+	fsm *raft.FSM,
+	httpNodes map[string]string,
 ) *KVService {
 
 	return &KVService{
-		repo: repo,
-		wal: wal,
-		raft: raftNode,
+		repo:      repo,
+		wal:       walStore,
+		raft:      raftNode,
+		fsm:       fsm,
+		httpNodes: httpNodes,
 	}
 }
 
@@ -45,22 +53,20 @@ func (s *KVService) Put(
 	}
 
 	cmd := raft.Command{
-		Op: "PUT",
-		Key: key,
+		Op:    "PUT",
+		Key:   key,
 		Value: value,
 	}
 
 	data, err := json.Marshal(cmd)
-
 	if err != nil {
 		return err
 	}
 
-	future :=
-		s.raft.Apply(
-			data,
-			5*time.Second,
-		)
+	future := s.raft.Apply(
+		data,
+		5*time.Second,
+	)
 
 	if err := future.Error(); err != nil {
 		return err
@@ -84,36 +90,106 @@ func (s *KVService) Delete(
 	}
 
 	cmd := raft.Command{
-		Op: "DELETE",
+		Op:  "DELETE",
 		Key: key,
 	}
 
 	data, err := json.Marshal(cmd)
-
 	if err != nil {
 		return err
 	}
 
-	future :=
-		s.raft.Apply(
-			data,
-			5*time.Second,
-		)
+	future := s.raft.Apply(
+		data,
+		5*time.Second,
+	)
 
 	if err := future.Error(); err != nil {
 		return err
 	}
 
-	return s.wal.LogDelete(
-		key,
-	)
+	return s.wal.LogDelete(key)
 }
 
 func (s *KVService) Get(
 	key string,
-) (string, bool) {
+	consistency string,
+) (string, bool, error) {
 
-	return s.repo.Get(
-		key,
-	)
+	if consistency == "strong" {
+
+		if s.raft.State() != hashiraft.Leader {
+
+			return "",
+				false,
+				errors.New(
+					"strong reads allowed only on leader",
+				)
+		}
+	}
+
+	value, ok := s.repo.Get(key)
+
+	return value,
+		ok,
+		nil
+}
+
+func (s *KVService) CanServeSmartRead() bool {
+
+	if s.raft.State() ==
+		hashiraft.Leader {
+
+		return true
+	}
+
+	stats :=
+		s.raft.Stats()
+
+	lastApplied :=
+		stats["last_log_index"]
+
+	commit :=
+		stats["commit_index"]
+
+	return lastApplied ==
+		commit
+}
+
+func (s *KVService) ForwardStrongRead(
+	key string,
+) (*http.Response, error) {
+
+	leader :=
+		string(
+			s.raft.Leader(),
+		)
+
+	if leader == "" {
+
+		return nil,
+			errors.New(
+				"leader unavailable",
+			)
+	}
+
+	port, ok :=
+		s.httpNodes[leader]
+
+	if !ok {
+
+		return nil,
+			errors.New(
+				"leader mapping missing",
+			)
+	}
+
+	url :=
+		"http://localhost:" +
+			port +
+			"/kv/" +
+			key +
+			"?consistency=strong"
+
+	return http.Get(url)
 }

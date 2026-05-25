@@ -3,7 +3,7 @@ package raft
 import (
 	"encoding/json"
 	"io"
-
+     "sync/atomic"
 	"gokv/internal/cache"
 
 	hashiraft "github.com/hashicorp/raft"
@@ -19,6 +19,7 @@ type Command struct {
 
 type FSM struct {
 	store *cache.MemoryStore
+    appliedIndex uint64
 }
 
 func NewFSM(
@@ -60,6 +61,11 @@ func (f *FSM) Apply(
 			cmd.Key,
 		)
 	}
+
+	atomic.StoreUint64(
+		&f.appliedIndex,
+		log.Index,
+	)
 
 	return nil
 }
@@ -120,6 +126,13 @@ func (s *Snapshot) Persist(
 		sink,
 	).Encode(
 		s.data,
+	)
+}
+
+func (f *FSM) AppliedIndex() uint64 {
+
+	return atomic.LoadUint64(
+		&f.appliedIndex,
 	)
 }
 
