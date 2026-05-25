@@ -46,3 +46,13 @@ func (m *MemoryStore) GetAll() map[string]string {
 
 	return copyData
 }
+func (m *MemoryStore) Clear() {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.data =
+		make(
+			map[string]string,
+		)
+}
