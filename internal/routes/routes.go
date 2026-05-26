@@ -19,4 +19,8 @@ func Register(
 
 	// Cluster APIs
 	r.GET("/node/status", nodeHandler.Status)
+	r.POST(
+	"/cluster/join",
+	nodeHandler.Join,
+)
 }

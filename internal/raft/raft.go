@@ -16,14 +16,14 @@ func SetupRaft(
 	raftDir string,
 	raftBind string,
 	store *cache.MemoryStore,
-) (*hashiraft.Raft, *FSM, error) {
+) (*hashiraft.Raft,*FSM,error){
 
-	config := hashiraft.DefaultConfig()
+	config:=hashiraft.DefaultConfig()
 
-	config.LocalID =
+	config.LocalID=
 		hashiraft.ServerID(nodeID)
 
-	transport, err :=
+	transport,err:=
 		hashiraft.NewTCPTransport(
 			raftBind,
 			nil,
@@ -32,28 +32,22 @@ func SetupRaft(
 			os.Stdout,
 		)
 
-	if err != nil {
-
-		return nil,
-			nil,
-			err
+	if err!=nil{
+		return nil,nil,err
 	}
 
-	snapshotStore, err :=
+	snapshotStore,err:=
 		hashiraft.NewFileSnapshotStore(
 			raftDir,
 			2,
 			os.Stdout,
 		)
 
-	if err != nil {
-
-		return nil,
-			nil,
-			err
+	if err!=nil{
+		return nil,nil,err
 	}
 
-	logStore, err :=
+	logStore,err:=
 		boltdb.NewBoltStore(
 			filepath.Join(
 				raftDir,
@@ -61,14 +55,11 @@ func SetupRaft(
 			),
 		)
 
-	if err != nil {
-
-		return nil,
-			nil,
-			err
+	if err!=nil{
+		return nil,nil,err
 	}
 
-	stableStore, err :=
+	stableStore,err:=
 		boltdb.NewBoltStore(
 			filepath.Join(
 				raftDir,
@@ -76,17 +67,13 @@ func SetupRaft(
 			),
 		)
 
-	if err != nil {
-
-		return nil,
-			nil,
-			err
+	if err!=nil{
+		return nil,nil,err
 	}
 
-	fsm :=
-		NewFSM(store)
+	fsm:=NewFSM(store)
 
-	raftNode, err :=
+	raftNode,err:=
 		hashiraft.NewRaft(
 			config,
 			fsm,
@@ -96,75 +83,43 @@ func SetupRaft(
 			transport,
 		)
 
-	if err != nil {
-
-		return nil,
-			nil,
-			err
+	if err!=nil{
+		return nil,nil,err
 	}
 
-	bootstrapConfig :=
-		hashiraft.Configuration{
+	if os.Getenv("BOOTSTRAP")=="true"{
 
-			Servers:
-			[]hashiraft.Server{
-
+		cfg:=hashiraft.Configuration{
+			Servers:[]hashiraft.Server{
 				{
-					ID:
-					"node1",
-
-					Address:
-					"127.0.0.1:7001",
-				},
-
-				{
-					ID:
-					"node2",
-
-					Address:
-					"127.0.0.1:7002",
-				},
-
-				{
-					ID:
-					"node3",
-
-					Address:
-					"127.0.0.1:7003",
+					ID:hashiraft.ServerID(nodeID),
+					Address:hashiraft.ServerAddress(
+						raftBind,
+					),
 				},
 			},
 		}
 
-	if nodeID == "node1" {
-
-		future :=
+		future:=
 			raftNode.
 			BootstrapCluster(
-				bootstrapConfig,
+				cfg,
 			)
 
-		err :=
-			future.Error()
+		if err:=future.Error();err!=nil{
 
-		if err != nil {
+			if err!=
+				hashiraft.ErrCantBootstrap{
 
-			if err !=
-				hashiraft.
-				ErrCantBootstrap {
-
-				return nil,
-					nil,
-					err
+				return nil,nil,err
 			}
 		}
 	}
 
 	fmt.Println(
-		"Raft node initialized:",
+		"raft initialized",
 		nodeID,
 	)
 
-	return raftNode,
-		fsm,
-		nil
+	return raftNode,fsm,nil
 }
