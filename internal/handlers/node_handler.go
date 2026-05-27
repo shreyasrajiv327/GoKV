@@ -11,31 +11,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type NodeHandler struct{
-
+type NodeHandler struct {
 	nodeID string
-
-	raft *hashiraft.Raft
+	raft   *hashiraft.Raft
 }
 
 func NewNodeHandler(
 	nodeID string,
 	raft *hashiraft.Raft,
-)*NodeHandler{
+) *NodeHandler {
 
 	return &NodeHandler{
-		nodeID:nodeID,
-		raft:raft,
+		nodeID: nodeID,
+		raft: raft,
 	}
 }
 
-func(h *NodeHandler) Status(
+func (h *NodeHandler) Status(
 	c *gin.Context,
-){
+) {
 
-	stats:=h.raft.Stats()
+	stats :=
+		h.raft.Stats()
 
-	term,_:=
+	term, _ :=
 		strconv.Atoi(
 			stats["term"],
 		)
@@ -43,29 +42,38 @@ func(h *NodeHandler) Status(
 	c.JSON(
 		http.StatusOK,
 		gin.H{
-			"id":h.nodeID,
-			"role":strings.ToLower(
-				h.raft.State().String(),
-			),
-			"term":term,
-			"leader":string(
-				h.raft.Leader(),
-			),
+
+			"id":
+				h.nodeID,
+
+			"role":
+				strings.ToLower(
+					h.raft.State().String(),
+				),
+
+			"term":
+				term,
+
+			"leader":
+				string(
+					h.raft.Leader(),
+				),
 		},
 	)
 }
 
-func(h *NodeHandler) Join(
+func (h *NodeHandler) Join(
 	c *gin.Context,
-){
+) {
 
-	if h.raft.State()!=
-		hashiraft.Leader{
+	if h.raft.State() !=
+		hashiraft.Leader {
 
 		c.JSON(
 			http.StatusBadRequest,
 			gin.H{
-				"error":"not leader",
+				"error":
+					"not leader",
 			},
 		)
 
@@ -74,22 +82,23 @@ func(h *NodeHandler) Join(
 
 	var req models.JoinRequest
 
-	if err:=
+	if err :=
 		c.ShouldBindJSON(
 			&req,
-		);err!=nil{
+		); err != nil {
 
 		c.JSON(
-			400,
+			http.StatusBadRequest,
 			gin.H{
-				"error":"bad request",
+				"error":
+					err.Error(),
 			},
 		)
 
 		return
 	}
 
-	future:=
+	future :=
 		h.raft.AddVoter(
 
 			hashiraft.ServerID(
@@ -104,13 +113,14 @@ func(h *NodeHandler) Join(
 			0,
 		)
 
-	if err:=
-		future.Error();err!=nil{
+	if err :=
+		future.Error(); err != nil {
 
 		c.JSON(
-			500,
+			http.StatusInternalServerError,
 			gin.H{
-				"error":err.Error(),
+				"error":
+					err.Error(),
 			},
 		)
 
@@ -118,9 +128,67 @@ func(h *NodeHandler) Join(
 	}
 
 	c.JSON(
-		200,
+		http.StatusOK,
 		gin.H{
-			"message":"joined",
+			"message":
+				"joined",
+		},
+	)
+}
+
+func (h *NodeHandler) Remove(
+	c *gin.Context,
+) {
+
+	if h.raft.State() !=
+		hashiraft.Leader {
+
+		c.JSON(
+			http.StatusBadRequest,
+			gin.H{
+				"error":
+					"not leader",
+			},
+		)
+
+		return
+	}
+
+	nodeID :=
+		c.Param(
+			"nodeID",
+		)
+
+	future :=
+		h.raft.RemoveServer(
+
+			hashiraft.ServerID(
+				nodeID,
+			),
+
+			0,
+			0,
+		)
+
+	if err :=
+		future.Error(); err != nil {
+
+		c.JSON(
+			http.StatusInternalServerError,
+			gin.H{
+				"error":
+					err.Error(),
+			},
+		)
+
+		return
+	}
+
+	c.JSON(
+		http.StatusOK,
+		gin.H{
+			"message":
+				"removed",
 		},
 	)
 }

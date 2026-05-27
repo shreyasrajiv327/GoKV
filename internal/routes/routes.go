@@ -23,4 +23,8 @@ func Register(
 	"/cluster/join",
 	nodeHandler.Join,
 )
+r.DELETE(
+		"/cluster/remove/:nodeID",
+		nodeHandler.Remove,
+	)
 }
