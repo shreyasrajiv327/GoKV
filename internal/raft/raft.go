@@ -87,6 +87,61 @@ func SetupRaft(
 		return nil,nil,err
 	}
 
+	existing, err :=
+	hashiraft.HasExistingState(
+		logStore,
+		stableStore,
+		snapshotStore,
+	)
+
+if err != nil {
+
+	return nil,
+		nil,
+		err
+}
+
+if !existing && nodeID == "node1" {
+
+	bootstrap :=
+		hashiraft.Configuration{
+
+			Servers:
+				[]hashiraft.Server{
+
+					{
+						ID:
+						hashiraft.ServerID(
+							nodeID,
+						),
+
+						Address:
+						hashiraft.ServerAddress(
+							raftBind,
+						),
+					},
+				},
+		}
+
+	future :=
+		raftNode.
+			BootstrapCluster(
+				bootstrap,
+			)
+
+	if err :=
+		future.Error(); err != nil {
+
+		if err !=
+			hashiraft.ErrCantBootstrap {
+
+			return nil,
+				nil,
+				err
+		}
+	}
+}
+
 	if os.Getenv("BOOTSTRAP")=="true"{
 
 		cfg:=hashiraft.Configuration{
