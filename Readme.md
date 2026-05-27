@@ -281,7 +281,7 @@ Write:
 curl \
 -X PUT localhost:8001/kv \
 -H "Content-Type: application/json" \
--d '{"key":"user","value":"shreyas"}'
+-d '{"key":"user","value":"Tom"}'
 ```
 
 Read:
