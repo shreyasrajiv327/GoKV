@@ -24,3 +24,11 @@ func (r *KVRepository) Get(key string) (string, bool) {
 func (r *KVRepository) Delete(key string) {
 	r.store.Delete(key)
 }
+
+func (r *KVRepository) GetAll() map[string]string {
+	return r.store.GetAll()
+}
+
+func (r *KVRepository) Clear() {
+    r.store.Clear()
+}

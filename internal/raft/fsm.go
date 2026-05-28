@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
      "sync/atomic"
-	"gokv/internal/cache"
+	"gokv/internal/repository"
 
 	hashiraft "github.com/hashicorp/raft"
 )
@@ -18,16 +18,16 @@ type Command struct {
 }
 
 type FSM struct {
-	store *cache.MemoryStore
+	repo *repository.KVRepository
     appliedIndex uint64
 }
 
 func NewFSM(
-	store *cache.MemoryStore,
+	repo  *repository.KVRepository,
 ) *FSM {
 
 	return &FSM{
-		store: store,
+		repo: repo,
 	}
 }
 
@@ -50,14 +50,14 @@ func (f *FSM) Apply(
 
 	case "PUT":
 
-		f.store.Put(
+		f.repo.Put(
 			cmd.Key,
 			cmd.Value,
 		)
 
 	case "DELETE":
 
-		f.store.Delete(
+		f.repo.Delete(
 			cmd.Key,
 		)
 	}
@@ -76,7 +76,7 @@ func (f *FSM) Snapshot() (
 ) {
 
 	data :=
-		f.store.GetAll()
+		f.repo.GetAll()
 
 	return &Snapshot{
 		data: data,
@@ -99,11 +99,11 @@ func (f *FSM) Restore(
 		return err
 	}
 
-	f.store.Clear()
+	f.repo.Clear()
 
 	for k, v := range data {
 
-		f.store.Put(
+		f.repo.Put(
 			k,
 			v,
 		)

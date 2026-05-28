@@ -2,7 +2,7 @@ package raft
 
 import (
 	"fmt"
-	"gokv/internal/cache"
+	"gokv/internal/repository"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,7 +15,7 @@ func SetupRaft(
 	nodeID string,
 	raftDir string,
 	raftBind string,
-	store *cache.MemoryStore,
+	repo *repository.KVRepository,
 ) (*hashiraft.Raft,*FSM,error){
 
 	config:=hashiraft.DefaultConfig()
@@ -71,7 +71,7 @@ func SetupRaft(
 		return nil,nil,err
 	}
 
-	fsm:=NewFSM(store)
+	fsm:=NewFSM(repo)
 
 	raftNode,err:=
 		hashiraft.NewRaft(

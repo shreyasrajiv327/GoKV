@@ -37,6 +37,11 @@ func main() {
 	//--------------------------------
 
 	mem := cache.NewMemoryStore()
+		repo :=
+		repository.
+			NewKVRepositroy(
+				mem,
+			)
 
 	//--------------------------------
 	// RAFT
@@ -56,7 +61,7 @@ func main() {
 			nodeID,
 			raftDir,
 			"127.0.0.1:"+raftPort,
-			mem,
+			repo,
 		)
 
 	if err != nil {
@@ -67,15 +72,6 @@ func main() {
 		)
 	}
 
-	//--------------------------------
-	// Repository
-	//--------------------------------
-
-	repo :=
-		repository.
-			NewKVRepositroy(
-				mem,
-			)
 
 	//--------------------------------
 	// Snapshot
