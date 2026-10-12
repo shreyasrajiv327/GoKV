@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"time"
 
 	raftpkg "gokv/internal/raft"
 
@@ -14,8 +13,6 @@ import (
 	"gokv/internal/repository"
 	"gokv/internal/routes"
 	"gokv/internal/services"
-	"gokv/internal/snapshot"
-	"gokv/internal/wal"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -37,7 +34,7 @@ func main() {
 	//--------------------------------
 
 	mem := cache.NewMemoryStore()
-		repo :=
+	repo :=
 		repository.
 			NewKVRepositroy(
 				mem,
@@ -72,120 +69,6 @@ func main() {
 		)
 	}
 
-
-	//--------------------------------
-	// Snapshot
-	//--------------------------------
-
-	snapshotStore :=
-		snapshot.New(
-			"snapshot.json",
-		)
-
-	snapshotData,
-		err :=
-		snapshotStore.Load()
-
-	if err != nil {
-
-		log.Fatal(
-			"snapshot load failed",
-			zap.Error(err),
-		)
-	}
-
-	for k, v :=
-		range snapshotData {
-
-		mem.Put(
-			k,
-			v,
-		)
-	}
-
-	//--------------------------------
-	// WAL
-	//--------------------------------
-
-	walStore,
-		err :=
-		wal.New(
-			"gokv.wal",
-		)
-
-	if err != nil {
-
-		log.Fatal(
-			"WAL init failed",
-			zap.Error(err),
-		)
-	}
-
-	err =
-		walStore.Replay(
-			repo.Put,
-			repo.Delete,
-		)
-
-	if err != nil {
-
-		log.Fatal(
-			"WAL replay failed",
-			zap.Error(err),
-		)
-	}
-
-	//--------------------------------
-	// Snapshot Worker
-	//--------------------------------
-
-	go func() {
-
-		ticker :=
-			time.NewTicker(
-				30 *
-					time.Second,
-			)
-
-		defer ticker.Stop()
-
-		for range ticker.C {
-
-			err :=
-				snapshotStore.Save(
-					mem.GetAll(),
-				)
-
-			if err != nil {
-
-				log.Error(
-					"snapshot failed",
-					zap.Error(err),
-				)
-
-				continue
-			}
-
-			err =
-				walStore.Clear()
-
-			if err != nil {
-
-				log.Error(
-					"WAL clear failed",
-					zap.Error(err),
-				)
-
-				continue
-			}
-
-			log.Info(
-				"snapshot complete + WAL compacted",
-			)
-		}
-
-	}()
-
 	//--------------------------------
 	// HTTP Node Mapping
 	//--------------------------------
@@ -193,14 +76,11 @@ func main() {
 	httpNodes :=
 		map[string]string{
 
-			"127.0.0.1:7001":
-			"8001",
+			"127.0.0.1:7001": "8001",
 
-			"127.0.0.1:7002":
-			"8002",
+			"127.0.0.1:7002": "8002",
 
-			"127.0.0.1:7003":
-			"8003",
+			"127.0.0.1:7003": "8003",
 		}
 
 	//--------------------------------
@@ -211,7 +91,6 @@ func main() {
 		services.
 			NewKVService(
 				repo,
-				walStore,
 				raftNode,
 				fsm,
 				httpNodes,

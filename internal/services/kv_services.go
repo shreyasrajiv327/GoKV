@@ -8,14 +8,12 @@ import (
 
 	"gokv/internal/raft"
 	"gokv/internal/repository"
-	"gokv/internal/wal"
 
 	hashiraft "github.com/hashicorp/raft"
 )
 
 type KVService struct {
 	repo *repository.KVRepository
-	wal  *wal.WAL
 
 	raft *hashiraft.Raft
 	fsm  *raft.FSM
@@ -25,7 +23,6 @@ type KVService struct {
 
 func NewKVService(
 	repo *repository.KVRepository,
-	walStore *wal.WAL,
 	raftNode *hashiraft.Raft,
 	fsm *raft.FSM,
 	httpNodes map[string]string,
@@ -33,7 +30,6 @@ func NewKVService(
 
 	return &KVService{
 		repo:      repo,
-		wal:       walStore,
 		raft:      raftNode,
 		fsm:       fsm,
 		httpNodes: httpNodes,
@@ -68,14 +64,7 @@ func (s *KVService) Put(
 		5*time.Second,
 	)
 
-	if err := future.Error(); err != nil {
-		return err
-	}
-
-	return s.wal.LogPut(
-		key,
-		value,
-	)
+	return future.Error()
 }
 
 func (s *KVService) Delete(
@@ -104,11 +93,7 @@ func (s *KVService) Delete(
 		5*time.Second,
 	)
 
-	if err := future.Error(); err != nil {
-		return err
-	}
-
-	return s.wal.LogDelete(key)
+	return future.Error()
 }
 
 func (s *KVService) Get(
